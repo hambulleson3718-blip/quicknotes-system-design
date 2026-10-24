@@ -8,6 +8,7 @@ const bodyInput = document.getElementById("body-input");
 const statusMessage = document.getElementById("status");
 const notesList = document.getElementById("notes-list");
 
+// Display loading, success, error and other status messages.
 function setStatus(message, type = "") {
   statusMessage.textContent = message;
   statusMessage.className = type;
@@ -27,7 +28,15 @@ async function request(url, options = {}) {
   };
 }
 
-// Display a note safely without interpreting user text as HTML.
+// Display an empty-state message when there are no notes.
+function showEmptyState() {
+  const emptyItem = document.createElement("li");
+  emptyItem.textContent = "No notes available yet.";
+  emptyItem.className = "empty-state";
+  notesList.replaceChildren(emptyItem);
+}
+
+// Display a note safely and provide a Delete button.
 function displayNote(note, addToTop = false) {
   const item = document.createElement("li");
   item.className = "note";
@@ -39,7 +48,16 @@ function displayNote(note, addToTop = false) {
   const body = document.createElement("p");
   body.textContent = note.body || "No body provided.";
 
-  item.append(title, body);
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete";
+  deleteButton.className = "delete-btn";
+
+  deleteButton.addEventListener("click", () => {
+    deleteNote(note.id, item, deleteButton);
+  });
+
+  item.append(title, body, deleteButton);
 
   if (addToTop) {
     notesList.prepend(item);
@@ -59,20 +77,20 @@ async function loadNotes() {
     const notes = result.data;
 
     if (notes.length === 0) {
-      const emptyItem = document.createElement("li");
-      emptyItem.textContent = "No notes available yet.";
-      notesList.appendChild(emptyItem);
+      showEmptyState();
       setStatus("No notes found.", "success");
       return;
     }
 
     notes.forEach(note => displayNote(note));
+
     setStatus(
       `Loaded ${notes.length} notes from the server.`,
       "success"
     );
   } catch (error) {
     console.error("GET request failed:", error);
+
     setStatus(
       "Sorry, we could not load your notes. Please try again.",
       "error"
@@ -82,7 +100,7 @@ async function loadNotes() {
   }
 }
 
-// POST: Create a note.
+// POST: Create a new note.
 async function createNote(event) {
   event.preventDefault();
 
@@ -96,7 +114,10 @@ async function createNote(event) {
   }
 
   if (title.length > 100) {
-    setStatus("The title must not exceed 100 characters.", "error");
+    setStatus(
+      "The title must not exceed 100 characters.",
+      "error"
+    );
     titleInput.focus();
     return;
   }
@@ -119,8 +140,8 @@ async function createNote(event) {
 
     const note = result.data;
 
-    // JSONPlaceholder simulates POST but does not persist new posts.
-    // Keep the returned note in the current page so the user can see it.
+    // JSONPlaceholder simulates POST; it does not persist new notes.
+    // Display the returned note in the current page only.
     displayNote(note, true);
 
     setStatus(
@@ -131,6 +152,7 @@ async function createNote(event) {
     noteForm.reset();
   } catch (error) {
     console.error("POST request failed:", error);
+
     setStatus(
       "Sorry, we could not create your note. Please try again.",
       "error"
@@ -140,5 +162,49 @@ async function createNote(event) {
   }
 }
 
+// DELETE: Remove a note from the current page after success.
+async function deleteNote(id, item, deleteButton) {
+  const confirmed = window.confirm(
+    "Are you sure you want to delete this note?"
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  deleteButton.disabled = true;
+  setStatus("Deleting note...", "loading");
+
+  try {
+    const result = await request(`${API_URL}/${id}`, {
+      method: "DELETE"
+    });
+
+    // JSONPlaceholder simulates DELETE and does not permanently
+    // change its stored posts. Remove the note from this page only.
+    item.remove();
+
+    if (notesList.querySelectorAll(".note").length === 0) {
+      showEmptyState();
+    }
+
+    setStatus(
+      `Note ${id} deleted successfully (status ${result.status}).`,
+      "success"
+    );
+  } catch (error) {
+    console.error("DELETE request failed:", error);
+
+    deleteButton.disabled = false;
+
+    setStatus(
+      "Sorry, we could not delete this note. Please try again.",
+      "error"
+    );
+  }
+}
+
+// Connect page controls to their functions.
 loadButton.addEventListener("click", loadNotes);
 noteForm.addEventListener("submit", createNote);
+
